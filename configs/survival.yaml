@@ -1,0 +1,76 @@
+defaults:
+  - model: span
+  - logging: default
+  - _self_
+  - override hydra/job_logging: disabled
+  - override hydra/hydra_logging: disabled
+
+task: "survival"
+dataset: "TCGA_BRAC"
+seed: 0
+epochs: 50
+eval_metric_freq: null
+num_workers: 8
+
+features_variant: "UNI"
+data_root: ${oc.env:SPAN_DATA_ROOT,data}
+
+n_groups: 4
+
+model:
+  econvs_type: "dwpatchconv"
+  conv_norm_position: "post"
+  edge_mode: "count"
+  global_strategy: "identity"
+  conv_bias: false
+  share_qkv: true
+  ff_ratio: 4
+  input_projection:
+    dropout: 0.05
+
+training:
+  lr: 1e-5
+  weight_decay: 1e-4
+  early_stop_patience: 10
+  coord_aug:
+    enabled: true
+    schedule:
+      enabled: true
+      mode: "cosine"
+      start_factor: 1.0
+      end_factor: 0.2
+    mirror:
+      enabled: true
+      p: 0.75
+    shear:
+      enabled: true
+      max_angle: 10
+      p: 0.75
+    rotate:
+      enabled: true
+      max_angle: 30
+      p: 0.75
+      fixed_angle: false
+    drop:
+      enabled: false
+      p: 0.0
+
+survival:
+  alpha: 0.0
+  aggregation: "multi_addition"
+  cls_drop: 0.05
+  head_act: "relu"
+
+logging:
+  results:
+    dir: "results/survival"
+    save_path: "span_survival"
+  wandb:
+    project: "SPAN_SURVIVAL"
+
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+  job:
+    chdir: false
