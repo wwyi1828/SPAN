@@ -1,0 +1,63 @@
+defaults:
+  - model: span
+  - logging: default
+  - _self_
+  - override hydra/job_logging: disabled
+  - override hydra/hydra_logging: disabled
+
+task: "classification"
+dataset: "C16"
+seed: 0
+epochs: 50
+num_workers: 8
+
+features_variant: "R50"
+data_root: ${oc.env:SPAN_DATA_ROOT,data}
+
+training:
+  lr: 1e-4
+  weight_decay: 1e-4
+  early_stop_patience: 10
+  coord_aug:
+    enabled: true
+    schedule:
+      enabled: true
+      mode: "cosine"
+      start_factor: 1.0
+      end_factor: 0.2
+    mirror:
+      enabled: true
+      p: 0.75
+    shear:
+      enabled: true
+      max_angle: 10
+      p: 0.75
+    rotate:
+      enabled: true
+      max_angle: 30
+      p: 0.75
+      fixed_angle: false
+    drop:
+      enabled: false
+      p: 0.0
+
+classification:
+  aggr_method: "multi_addition"
+  cls_drop: 0.05
+  head_act: "relu"
+  head_div: 4
+  head_norm: true
+
+logging:
+  results:
+    dir: "results/classification"
+    save_path: "final_cls"
+  wandb:
+    project: "SPAN_CLS"
+
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+  job:
+    chdir: false

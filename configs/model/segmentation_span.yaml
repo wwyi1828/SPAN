@@ -1,0 +1,38 @@
+slide_configs: "111-21"
+channel_factor: 1
+trans_type: "hybrid"
+dtrans_type: "hybrid"
+econvs_type: "patchconv"
+dconvs_type: "pixelshuffle"
+enc_act: 'ReLU'
+embed_dim_div: 2
+skip_first: 1
+
+input_projection:
+  mlp_ratio: 0.5
+  activation: null
+  dropout: 0.05
+  prenorm: false
+  bias: false
+  drop_first: false
+token_init_types: ['max', 'mean', 'fix1e-4']
+global_strategy: 'proj'
+connection: 'concat'
+
+ff_ratio: 4
+attn_drop: 0.05
+proj_drop: 0.0
+drop_path: 0.0
+window_size: 3
+share_qkv: false
+
+pos_emb: 'rpb'
+pos_std: 0.02
+
+kernel_size: 2
+stride: 2
+dilation: 1
+conv_bias: false
+edge_mode: none
+edge_eps: 1e-6
+conv_norm_position: post

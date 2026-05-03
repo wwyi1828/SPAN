@@ -1,0 +1,66 @@
+defaults:
+  - model: segmentation_span
+  - logging: default
+  - _self_
+  - override hydra/job_logging: disabled
+  - override hydra/hydra_logging: disabled
+
+task: "segmentation"
+dataset: "C16"
+seed: 42
+epochs: 40
+eval_metric_freq: null
+num_workers: 12
+features_dim: 1024
+features_variant: "R50"
+data_root: ${oc.env:SPAN_DATA_ROOT,data}
+
+model:
+  slide_configs: "111-11"
+  channel_factor: 2
+  econvs_type: "patchconv"
+  trans_type: "hybrid"
+  ff_ratio: 2.0
+  drop_path: 0.0
+
+training:
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+  coord_aug:
+    enabled: false
+    schedule:
+      enabled: false
+      mode: "cosine"
+      start_factor: 1.0
+      end_factor: 0.2
+    mirror:
+      enabled: false
+      p: 0.75
+    shear:
+      enabled: false
+      max_angle: 5
+      p: 0.75
+    rotate:
+      enabled: false
+      max_angle: 45
+      p: 0.75
+      fixed_angle: false
+    drop:
+      enabled: false
+      p: 0.0
+
+segmentation:
+  dice_weight: 0.75
+  threshold: 0.2
+
+logging:
+  results:
+    dir: "results/segmentation"
+    save_path: "span_seg"
+
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+  job:
+    chdir: false

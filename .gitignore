@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.vscode/
+.DS_Store
+
+# Results, logs, and local artifacts
+results/
+logs/
+wandb/
+
+# Data and generated documents
+*.csv
+*.tsv
+*.h5
+*.hdf5
+*.pkl
+*.pt
+*.pth
+*.ckpt
+*.pdf
+*.docx
+*.tex
+*.retire

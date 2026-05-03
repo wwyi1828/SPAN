@@ -1,0 +1,11 @@
+mode: "best"
+
+wandb:
+  enabled: false
+  project: "SPAN"
+  entity: null
+  tags: []
+  notes: ""
+
+results:
+  dir: "results"
