@@ -9,6 +9,8 @@ This repository contains the SPAN implementation for:
 - slide-level survival analysis
 - the shared `src.span` model implementation
 
+Feature files can be prepared from whole-slide images using [PatchPreprocess](https://github.com/wwyi1828/PatchPreprocess), then passed to SPAN through `data_root`.
+
 ## Layout
 
 ```text
