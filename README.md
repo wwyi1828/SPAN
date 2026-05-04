@@ -1,6 +1,8 @@
-# SPAN Release
+# SPAN
 
-This release snapshot contains the vision-facing SPAN code path:
+[![Paper](https://img.shields.io/badge/Paper-CVPR%202026-b31b1b?logo=adobeacrobatreader&logoColor=white)](https://arxiv.org/pdf/2406.09333)
+
+This repository contains the SPAN implementation for:
 
 - slide-level classification
 - patch-level segmentation
@@ -24,7 +26,7 @@ pip install -r requirements.txt
 
 ## Data
 
-Task configs read feature files from `data_root`, which defaults to `SPAN_DATA_ROOT` and then `data`.
+Prepare slide-level feature files in the layout expected by the selected task config, then point `data_root` to that directory. `data_root` defaults to `SPAN_DATA_ROOT` and then `data`.
 
 ```bash
 export SPAN_DATA_ROOT=/path/to/features
@@ -36,9 +38,9 @@ You can also edit `data_root` in:
 - `configs/segmentation.yaml`
 - `configs/survival.yaml`
 
-For survival tasks, clinical TSV files default to `${SPAN_DATA_ROOT}/TCGA_clinical`. Override with `SPAN_CLINICAL_ROOT` or `clinical_root=/path/to/clinical`.
+The `dataset` field in each config selects the corresponding loader in `tasks/vision/shared/data.py`.
 
-For `BRACS7`, subtype labels default to `${SPAN_DATA_ROOT}/labels`. Override with `SPAN_LABEL_ROOT` or `label_root=/path/to/labels`.
+Survival tasks also require the corresponding clinical metadata.
 
 ## Run
 
@@ -53,3 +55,7 @@ W&B logging is disabled by default. Enable it explicitly when needed:
 ```bash
 python -m tasks.vision.slide.classification.main logging.wandb.enabled=true
 ```
+
+## License
+
+This code is released under the MIT License.
