@@ -2,6 +2,10 @@
 
 [![Paper](https://img.shields.io/badge/Paper-CVPR%202026-b31b1b?logo=adobeacrobatreader&logoColor=white)](https://arxiv.org/pdf/2406.09333)
 
+<p align="center">
+  <img src="assets/sparse_compute.gif" alt="SPAN rulebook compute" width="100%">
+</p>
+
 This repository contains the SPAN implementation for:
 
 - slide-level classification
