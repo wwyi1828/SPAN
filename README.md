@@ -20,6 +20,10 @@ Unlike standard MIL models that treat a slide as an unordered bag of patch featu
 
 * A follow-up work extending SPAN's sparse hierarchical design to cross-modal spatial transcriptomics modeling has been accepted to ICML 2026. The follow-up codebase will also be open-sourced. [ICML 2026 Poster](https://icml.cc/virtual/2026/poster/61463)
 
+<p align="center">
+  <img src="assets/sparse_compute.gif" alt="SPAN rulebook compute" width="85%">
+</p>
+
 ---
 
 ## Overview
