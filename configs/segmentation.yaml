@@ -19,7 +19,7 @@ model:
   slide_configs: "111-11"
   channel_factor: 2
   econvs_type: "patchconv"
-  trans_type: "hybrid"
+  trans_type: "long"
   ff_ratio: 2.0
   drop_path: 0.0
 

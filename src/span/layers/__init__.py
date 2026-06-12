@@ -3,7 +3,6 @@ from .transformer import (
     LongformerTransLayer,
     SwinTransLayer,
     TradSwinTransLayer,
-    HybridTransLayer,
     TransformerLayer,
 )
 from .attention import AttentionBuilder
@@ -19,7 +18,6 @@ __all__ = [
     'LongformerTransLayer',
     'SwinTransLayer',
     'TradSwinTransLayer',
-    'HybridTransLayer',
     'TransformerLayer',
     'AttentionBuilder',
     'ConvolutionLayer',

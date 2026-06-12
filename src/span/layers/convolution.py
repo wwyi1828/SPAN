@@ -702,57 +702,6 @@ class PixelShuffle(nn.Module):
         global_feat_out = self.output_norm(global_feat_out)
         return global_feat_out
 
-class MixerBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride, dilation, bias, activation):
-        super(MixerBlock, self).__init__()
-        self.kernel_size = kernel_size
-        self.input_norm = nn.LayerNorm(in_channels)
-        self.norm = nn.LayerNorm(out_channels)
-        self.dwconv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size,
-                              stride=stride, dilation=dilation, bias=bias, groups=in_channels)
-        self.dwconv2 = nn.MaxPool2d(kernel_size=kernel_size,stride=stride,dilation=dilation)
-        self.pool = nn.MaxPool2d(kernel_size=kernel_size,stride=stride,dilation=dilation)
-
-        self.gamma = nn.Parameter(3 * torch.ones((out_channels)), requires_grad=True)
-
-    def forward(self, coord, feat, spatial_shape, pos_dict=None):
-        feat = self.input_norm(feat)
-        mask = _build_mask(coord, spatial_shape).unsqueeze(-1)
-        dense_feat = _build_dense(coord, feat, spatial_shape)
-
-        dense_conv_out = self.dwconv(dense_feat.unsqueeze(0).permute(0, 3, 1, 2)).squeeze(0).permute(1, 2, 0)
-        dense_pool_out = self.dwconv2(dense_feat.unsqueeze(0).permute(0, 3, 1, 2)).squeeze(0).permute(1, 2, 0)
-        out_mask = self.pool(mask.unsqueeze(0).permute(0, 3, 1, 2)).squeeze(0).permute(1, 2, 0)
-
-        gamma_weighted = torch.sigmoid(self.gamma).unsqueeze(0)
-        out_coord = torch.nonzero(out_mask.squeeze())
-        conv_out = dense_conv_out[out_coord[:, 0], out_coord[:, 1]]
-        pool_out = dense_pool_out[out_coord[:, 0], out_coord[:, 1]]
-
-        spatial_shape = (out_coord.int().max(dim=0)[0]+1).tolist()
-        out_feat = gamma_weighted*conv_out/(self.kernel_size**2) + (1-gamma_weighted)*pool_out
-        out_feat = self.norm(out_feat)
-
-        return out_coord, out_feat, spatial_shape, None
-
-    def conv_forward(self, global_feat, pool):
-        feat = self.input_norm(global_feat)
-
-        kernel_size = self.dwconv.kernel_size[0] if isinstance(self.dwconv.kernel_size, tuple) else self.dwconv.kernel_size
-        dilation = self.dwconv.dilation[0] if isinstance(self.dwconv.dilation, tuple) else self.dwconv.dilation
-
-        expanded_height = kernel_size + (kernel_size - 1) * (dilation - 1)
-        expanded_width = kernel_size + (kernel_size - 1) * (dilation - 1)
-
-        out_expanded = feat.unsqueeze(-1).unsqueeze(-1)
-        out_expanded = out_expanded.expand(-1, -1, expanded_height, expanded_width)
-        conv_out = self.dwconv(out_expanded).view(1, -1) / (kernel_size**2)
-        conv_out_1 = self.dwconv2(out_expanded).view(1, -1)
-        gamma_weighted = torch.sigmoid(self.gamma).unsqueeze(0)
-        out_feat = gamma_weighted * conv_out + (1-gamma_weighted)*conv_out_1
-        out_feat = self.norm(out_feat)
-        return out_feat
-
 class LinearLayer(nn.Module):
     def __init__(self, in_channels, out_channels, bias, activation, dropout, mlp_ratio, prenorm, drop_first):
         super(LinearLayer, self).__init__()
