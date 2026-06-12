@@ -23,16 +23,12 @@ def generate_swin_windows(matrix, w, use_shift=False):
     return blocks[block_sums > 0]
 
 ATTENTION_CONFIGS = {
-    'hybrid': [
-        {'graph': 'g1', 'patterns': ['swmsa', 'wmsa', 'lloop'], 'dedup': True},
-        {'graph': 'g2', 'patterns': ['g2g', 'l2g', 'g2l', 'gloop'], 'require_global': True},
-    ],
-    'hybrid_noshift': [
-        {'graph': 'g1', 'patterns': ['wmsa', 'lloop'], 'dedup': True},
-        {'graph': 'g2', 'patterns': ['g2g', 'l2g', 'g2l', 'gloop'], 'require_global': True},
-    ],
     'long': [
         {'graph': 'g1', 'patterns': ['swmsa', 'wmsa', 'lloop'], 'dedup': True},
+        {'graph': 'g2', 'patterns': ['g2g', 'l2g', 'g2l', 'gloop'], 'require_global': True},
+    ],
+    'long_noshift': [
+        {'graph': 'g1', 'patterns': ['wmsa', 'lloop'], 'dedup': True},
         {'graph': 'g2', 'patterns': ['g2g', 'l2g', 'g2l', 'gloop'], 'require_global': True},
     ],
     'swin': [
@@ -46,10 +42,6 @@ ATTENTION_CONFIGS = {
     'swin_global': [
         {'graph': 'g1', 'patterns': ['swmsa', 'lloop']},
         {'graph': 'g2', 'patterns': ['wmsa', 'lloop']},
-        {'graph': 'g2', 'patterns': ['g2g', 'l2g', 'g2l', 'gloop'], 'require_global': True},
-    ],
-    'lsa': [
-        {'graph': 'g1', 'patterns': ['lsa', 'lloop'], 'dedup': True},
         {'graph': 'g2', 'patterns': ['g2g', 'l2g', 'g2l', 'gloop'], 'require_global': True},
     ],
 }
@@ -119,7 +111,7 @@ class AttentionBuilder(nn.Module):
 
     def build_graph(self, mode):
 
-        valid_modes = ['lloop', 'gloop', 'g2g', 'l2g', 'g2l', 'wmsa', 'swmsa', 'lsa']
+        valid_modes = ['lloop', 'gloop', 'g2g', 'l2g', 'g2l', 'wmsa', 'swmsa']
         assert mode in valid_modes, f"Invalid mode {mode}. Valid modes are: {', '.join(valid_modes)}"
 
         if mode == 'lloop':
@@ -132,8 +124,6 @@ class AttentionBuilder(nn.Module):
             return self.edges_local2global()
         if mode == 'g2l':
             return self.edges_global2local()
-        elif mode == 'lsa':
-            return self._build_lsa_attention()
         elif mode in ('wmsa', 'swmsa'):
             num_nodes = self.positions.size(0)
             device = self.positions.device
@@ -183,63 +173,7 @@ class AttentionBuilder(nn.Module):
 
             return (filtered_src - 1, filtered_dst - 1)
 
-    def _build_lsa_attention(self):
-        num_nodes = self.positions.size(0)
-        device = self.positions.device
-        w = self.window_size
-
-        # Build dense grid of node ids (1-based), reuse logic similar to WMSA paths
-        if self.mask_padding:
-            num_local = self.positions.size(0)
-            valid_indices = torch.arange(0, num_local, device=device)[1:-1]
-            node_shift_id = valid_indices + 1  # 1-based ids, keep 0 for padding
-            node_pos = self.positions[valid_indices]
-        else:
-            # Create IDs only for local nodes (global nodes don't participate in spatial attention)
-            node_shift_id = torch.arange(1, self.positions.size(0) + 1, device=device)
-            node_pos = self.positions
-
-        if node_pos.numel() == 0:
-            return (torch.tensor([], dtype=torch.long, device=device),
-                    torch.tensor([], dtype=torch.long, device=device))
-
-        adjusted_positions = node_pos.short().t()
-        H = int(adjusted_positions[0].max().item()) + 1
-        W = int(adjusted_positions[1].max().item()) + 1
-
-        dense_matrix = torch.sparse_coo_tensor(
-            adjusted_positions, node_shift_id, size=(H, W), device=device
-        ).to_dense()
-
-        if dense_matrix.numel() == 0:
-            return (torch.tensor([], dtype=torch.long, device=device),
-                    torch.tensor([], dtype=torch.long, device=device))
-
-        # Vectorized sliding window (stride=1) over padded grid
-        pad = (w, w, w, w)  # left, right, top, bottom
-        padded = F.pad(dense_matrix, pad, mode='constant', value=0)
-        K = 2 * w + 1
-
-        # Unfold to get all (2w+1)x(2w+1) neighborhoods centered at each grid cell
-        windows = padded.unfold(0, K, 1).unfold(1, K, 1)  # shape: H x W x K x K
-        H_out, W_out = windows.size(0), windows.size(1)
-        if H_out == 0 or W_out == 0:
-            return (torch.tensor([], dtype=torch.long, device=device),
-                    torch.tensor([], dtype=torch.long, device=device))
-
-        windows_flat = windows.contiguous().view(H_out * W_out, K * K)
-        centers = dense_matrix.view(-1)  # center id per position (1-based, 0 if empty)
-
-        src = centers.repeat_interleave(K * K)
-        dst = windows_flat.flatten()
-
-        mask = (src != 0) & (dst != 0) & (src != dst)
-        src = src[mask] - 1  # back to 0-based
-        dst = dst[mask] - 1
-
-        return (src, dst)
-
-    def forward(self, positions, valid_globals,  mode='hybrid'):
+    def forward(self, positions, valid_globals,  mode='long'):
 
         self.positions = positions
         self.num_valid_globals = valid_globals

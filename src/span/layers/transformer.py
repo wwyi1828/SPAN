@@ -146,29 +146,6 @@ class BaseTransformerLayer(nn.Module):
     def forward(self, *args):
         raise NotImplementedError("This method should be overridden by subclasses")
 
-class HybridTransLayer(BaseTransformerLayer):
-    def forward(self, feat, global_feat, g1, g2, ins_pos=None):
-
-        shortcut = torch.cat([feat, global_feat], dim=0)
-        feat = self.norm1(feat)
-        global_feat = self.norm1(global_feat)
-
-        attn_out = 0
-        if g1 is not None:
-            attn_out += self.flexible_attention(g1, feat, global_feat, ins_pos, alter_qkv=False, mask_type='local')
-        if global_feat.size(0) > 0:
-            attn_out += self.flexible_attention(g2, feat, global_feat, ins_pos, alter_qkv=True, mask_type='global')
-
-        attn_out = self.fc_out(attn_out)
-        attn_out = self.proj_drop(attn_out)
-        feats = shortcut + self.drop_path(attn_out)
-
-        feats = feats + self.drop_path(self.ffn(self.norm2(feats)))
-
-        feat = feats[:feat.size(0)]
-        global_feat = feats[feat.size(0):]
-        return feat, global_feat
-
 class SwinTransLayer(BaseTransformerLayer):
     def forward(self, feat, global_feat, g1, g2, ins_pos=None):
 
@@ -292,11 +269,10 @@ class TransformerLayer(nn.Module):
         default_args.update(kwargs)
 
         blocks = {
-            'hybrid': lambda: HybridTransLayer(**default_args),
-            'hybrid_noshift': lambda: HybridTransLayer(**default_args),
             'swin': lambda: SwinTransLayer(**default_args),
             'tradswin': lambda: TradSwinTransLayer(**default_args),
             'long': lambda: LongformerTransLayer(**default_args),
+            'long_noshift': lambda: LongformerTransLayer(**default_args),
             'linear': lambda: LinearTransLayer(in_channels=kwargs.get('in_channels', embed_dim), out_channels=kwargs.get('out_channels', embed_dim),
                                                 bias=kwargs.get('bias', True)
             ),

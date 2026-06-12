@@ -1,7 +1,7 @@
 slide_configs: "111-21"
 channel_factor: 1
-trans_type: "hybrid"
-dtrans_type: "hybrid"
+trans_type: "long"
+dtrans_type: "long"
 econvs_type: "patchconv"
 dconvs_type: "pixelshuffle"
 enc_act: 'ReLU'

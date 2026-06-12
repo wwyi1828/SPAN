@@ -1,6 +1,6 @@
 slide_configs: "111"
 channel_factor: 1
-trans_type: "hybrid"
+trans_type: "long"
 econvs_type: "dwpatchconv"
 enc_act: 'ReLU'
 embed_dim_div: 2
