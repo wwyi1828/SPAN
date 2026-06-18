@@ -32,34 +32,6 @@ def _gather_by_mask(dense_feat, mask):
     spatial_shape = [*mask.shape[:2]]
     return out_coord, out_feat, spatial_shape
 
-def channel_shuffle(x, groups):
-    H_out, W_out, num_channels = x.size()
-    x = x.view(H_out, W_out, groups, num_channels // groups)
-    x = x.permute(0, 1, 3, 2).contiguous()
-    x = x.view(H_out, W_out, num_channels)
-    return x
-
-def ConvwithMM(conv, global_feat, pool):
-    conv_weights = conv.weight
-    conv_bias = conv.bias
-
-    c_out, _, _, c_in = conv_weights.shape
-    conv_weights = conv_weights.view(c_out, -1, c_in)
-    k_len = conv_weights.size(1)
-    global_feat = global_feat.unsqueeze(1).expand(-1, k_len, -1)
-    global_feat = torch.einsum('oki,gki->gko', conv_weights, global_feat)
-
-    if conv_bias is not None:
-        global_feat = global_feat + conv_bias
-
-    if pool == 'mean':
-        global_feat = torch.mean(global_feat, dim=1)
-    elif pool == 'sum':
-        global_feat = torch.sum(global_feat, dim=1)
-    elif pool == 'max':
-        global_feat = torch.max(global_feat, dim=1)[0]
-    return global_feat
-
 def dense_ConvwithMM(conv, global_feat, pool):
     kernel_size = conv.kernel_size[0] if isinstance(conv.kernel_size, tuple) else conv.kernel_size
     dilation = conv.dilation[0] if isinstance(conv.dilation, tuple) else conv.dilation

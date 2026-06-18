@@ -171,16 +171,6 @@ def save_results(data: Dict[str, Any], results_dir: Union[str, Path], filename: 
     return result_path
 
 
-def load_results(results_dir: Union[str, Path], filename: str) -> Dict[str, Any]:
-    """Load results from JSON file (returns {} if not found)."""
-    result_path = get_results_path(results_dir, filename)
-    if not result_path.exists():
-        logger.warning(f"Results file not found: {result_path}")
-        return {}
-    with open(result_path, 'r') as f:
-        return json.load(f)
-
-
 def update_results_file(
     results_dir: Union[str, Path],
     filename: str,
@@ -255,10 +245,3 @@ def save_metrics(
                 field_slots[slot_index] = field_value
 
     update_results_file(results_dir, filename, _update)
-
-
-def get_wandb_dir(logs_dir: str = "logs") -> Path:
-    """Get wandb directory."""
-    wandb_path = Path(logs_dir) / "wandb"
-    wandb_path.mkdir(parents=True, exist_ok=True)
-    return wandb_path

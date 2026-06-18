@@ -1,6 +1,5 @@
 import copy
 import torch
-import torch.nn as nn
 import numpy as np
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR

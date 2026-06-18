@@ -1,10 +1,6 @@
 import torch
 import torch.nn as nn
-from ..attention_aggregators import (
-    MultiAggregator,
-    DropMultiAggregator,
-    MultiAttnAggregator
-)
+from ..attention_aggregators import MultiAggregator
 
 
 class SurvivalMixin:
@@ -15,10 +11,6 @@ class SurvivalMixin:
         hazards = torch.sigmoid(output)
         S = torch.cumprod(1 - hazards, dim=1)
         return hazards, S, Y_hat
-
-    def predict_risk_score(self, x):
-        _, S, _ = self.predict_survival(x)
-        return -torch.sum(S, dim=1)
 
 
 class SurvivalAggregator(SurvivalMixin, nn.Module):
@@ -36,12 +28,4 @@ class SurvivalAggregator(SurvivalMixin, nn.Module):
 
 
 class SurvivalMultiAggregator(SurvivalMixin, MultiAggregator):
-    pass
-
-
-class SurvivalDropMultiAggregator(SurvivalMixin, DropMultiAggregator):
-    pass
-
-
-class SurvivalMultiAttnAggregator(SurvivalMixin, MultiAttnAggregator):
     pass
