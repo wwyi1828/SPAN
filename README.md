@@ -201,28 +201,98 @@ python -m tasks.vision.slide.survival.main \
 
 ## Configuration
 
-SPAN uses Hydra configs under:
+SPAN is configured with [Hydra](https://hydra.cc/). Everything lives under `configs/`:
 
 ```text
 configs/
+├── classification.yaml          # task config: slide-level classification
+├── segmentation.yaml            # task config: patch-level segmentation
+├── survival.yaml                # task config: slide-level survival
+├── model/
+│   ├── span.yaml                # model config used by classification / survival
+│   └── segmentation_span.yaml   # model config used by segmentation (encoder–decoder)
+└── logging/
+    └── default.yaml             # logging / W&B config
 ```
 
-Common options can be overridden from the command line, for example:
+### How the configs compose
+
+Each **task config** (`classification.yaml`, `segmentation.yaml`, `survival.yaml`) is the
+entrypoint config for that task. Its `defaults:` list pulls in a **model config** and the
+**logging config**, then `_self_` lets the task file override any of their values:
+
+```yaml
+defaults:
+  - model: span        # load configs/model/span.yaml
+  - logging: default   # load configs/logging/default.yaml
+  - _self_             # values in this file win over the loaded defaults
+```
+
+Any value can be overridden on the command line with dotted paths, and the model config can
+be swapped wholesale:
 
 ```bash
 python -m tasks.vision.slide.classification.main \
-  dataset=C16 \
-  features_variant=R50 \
   data_root=/path/to/features \
-  logging.wandb.enabled=false
-```
-
-W&B logging is disabled by default and can be enabled explicitly:
-
-```bash
-python -m tasks.vision.slide.classification.main \
+  model.trans_type=swin \         # override one model field
+  model=segmentation_span \       # or swap the whole model config
   logging.wandb.enabled=true
 ```
+
+### Task config (`classification.yaml` / `segmentation.yaml` / `survival.yaml`)
+
+Top-level run settings shared by all tasks:
+
+| Key | Meaning |
+| --- | --- |
+| `task` | Task name, used for run naming and result paths. |
+| `dataset` | Which dataset/loader to use (e.g. `C16`, `TCGA_BRAC`). |
+| `features_variant` | Which pre-extracted feature set to read (e.g. `R50`, `UNI`). |
+| `data_root` | Folder holding the H5 feature files. Defaults to `$SPAN_DATA_ROOT` or `data`. |
+| `seed` / `epochs` / `num_workers` | Standard training run settings. |
+| `n_groups` | (survival only) Number of discrete-time risk bins. |
+
+Each task file also has a block of **task-specific** options:
+
+| Block | Key fields | Meaning |
+| --- | --- | --- |
+| `training` | `lr`, `weight_decay`, `early_stop_patience` | Optimization settings. |
+| `training.coord_aug` | `enabled`, `schedule`, `mirror` / `shear` / `rotate` / `drop` | Coordinate-space augmentation on the patch grid, with an optional cosine schedule that anneals the augmentation strength over training. |
+| `classification` | `aggr_method`, `cls_drop`, `head_act`, `head_div`, `head_norm` | Slide-level aggregation head and its dropout/activation/norm. |
+| `segmentation` | `dice_weight`, `threshold` | Dice/BCE loss mix and the decision threshold for patch prediction. |
+| `survival` | `alpha`, `aggregation`, `cls_drop`, `head_act` | Survival loss balance and the aggregation head. |
+
+### Model config (`model/span.yaml`, `model/segmentation_span.yaml`)
+
+This file defines the network architecture. See [Supported modules](#supported-modules) for
+the block-type menus; the remaining fields are:
+
+| Key | Meaning |
+| --- | --- |
+| `slide_configs` | Network spec: each digit is the number of transformer layers in a stage; `-` separates the encoder from an optional decoder. |
+| `channel_factor` | Channel-width multiplier applied at each downsampling stage. |
+| `embed_dim_div` | Sets the working width: `embed_dim = feature_dim / embed_dim_div` (and `num_heads = embed_dim / 64`). |
+| `econvs_type` / `dconvs_type` | Encoder / decoder down/upsampling block type. |
+| `trans_type` / `dtrans_type` | Encoder / decoder attention block type. |
+| `window_size` | Attention window extent (windows span `2 * window_size` grid cells). |
+| `ff_ratio`, `attn_drop`, `proj_drop`, `drop_path` | Transformer feed-forward ratio and dropout/stochastic-depth rates. |
+| `input_projection` | The first-stage linear projection (`mlp_ratio`, `dropout`, `prenorm`, `bias`, …) that maps raw patch features into the working width. |
+| `token_init_types` | Global summary tokens prepended to the sequence; each entry is `max` / `mean` / `std` pooling, or a `fix…` (fixed) / `lrn…` (learnable) randomly-initialized token. |
+| `global_strategy` | How the global token interacts with conv stages: `identity`, `proj`, or `kernel`. |
+| `pos_emb` | Positional encoding for attention: `rpb`, `alibi`, `rope`, or `none`. |
+| `kernel_size` / `stride` / `dilation` | Sparse conv geometry on the patch grid. |
+| `edge_mode` | Boundary handling for sparse convs: `none`, `count`, or `partial`. |
+| `conv_bias`, `conv_norm_position`, `share_qkv` | Conv bias, pre/post norm placement, and whether Q/K/V projections are shared. |
+| `skip_first` / `connection` | (Decoder only) encoder→decoder skip connections and how they merge (`concat`, `add`, `none`). |
+
+### Logging config (`logging/default.yaml`)
+
+| Key | Meaning |
+| --- | --- |
+| `mode` | Checkpoint-selection mode (e.g. keep `best`). |
+| `results.dir` | Where metrics and checkpoints are written. |
+| `wandb.enabled` | W&B logging, **off by default**; enable with `logging.wandb.enabled=true`. |
+| `wandb.project` / `wandb.entity` / `wandb.tags` / `wandb.notes` | W&B run metadata. |
 
 ---
 
