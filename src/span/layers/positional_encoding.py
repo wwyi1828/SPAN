@@ -82,22 +82,6 @@ def apply_rotary_pos_emb(
     """
     return (x * cos * scale) + (rotate_half(x) * sin * scale)
 
-def apply_rope_2d(
-    x: torch.Tensor,
-    ins_pos: torch.Tensor,
-    base: float = 10000.0,
-    scale: float = 1.0,
-) -> torch.Tensor:
-    """Convenience: compute 2D cos/sin on-the-fly then apply to x.
-
-    - x: (N, H, D)
-    - ins_pos: (N, 2)
-    """
-    cos, sin = build_2d_rope_cos_sin(
-        ins_pos, head_dim=x.size(-1), base=base, device=x.device, dtype=x.dtype
-    )
-    return apply_rotary_pos_emb(x, cos, sin, scale=scale)
-
 def apply_rope_2d_partial(
     x: torch.Tensor,
     ins_pos: torch.Tensor,

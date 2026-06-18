@@ -1,4 +1,3 @@
-import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -207,49 +206,4 @@ class MultiAggregator(nn.Module):
         if self.lastnorm:
             context_tensor = self.norm(context_tensor)
         output = self.fc(context_tensor)
-        return output
-
-class DropMultiAggregator(nn.Module):
-
-    def __init__(self, input_dim=512, activation='GELU', use_gated=False, bias=True,
-                 dropout=0.0, num_layers=1, num_classes=1, head_div=4):
-
-        super().__init__()
-        self.num_layers = num_layers
-        self.num_classes = num_classes
-
-        self.aggregators = nn.ModuleList()
-        for _ in range(num_layers):
-            if use_gated:
-                self.aggregators.append(GatedMLPAttention(input_dim, activation, bias, dropout))
-            else:
-                self.aggregators.append(MLPAttention(input_dim, activation, bias, dropout, head_div))
-
-        self.fc = nn.Sequential(nn.Dropout(dropout),
-                                nn.Linear(input_dim, num_classes))
-        self.norm = nn.LayerNorm(input_dim)
-        self.scale_drop = 0
-
-    def forward(self, x_list):
-
-        assert len(x_list) == self.num_layers
-
-        if self.scale_drop > 0:
-            selected_scale = random.randint(0, self.num_layers - 1)
-            num_tokens = len(x_list[selected_scale])
-            num_to_keep = int(num_tokens * (1 - self.scale_drop))
-            keep_indices = random.sample(range(num_tokens), num_to_keep)
-            x_list[selected_scale] = x_list[selected_scale][keep_indices]
-
-        aggregated_features = []
-        for i in range(self.num_layers):
-            x = x_list[i]
-            if x.size(0) > 0:
-                aggregated_feature = self.aggregators[i](x)
-                aggregated_features.append(aggregated_feature)
-
-        aggregated_features = torch.stack(aggregated_features, dim=0)
-        aggregated_output = torch.mean(aggregated_features, dim=0)
-        aggregated_output = self.norm(aggregated_output)
-        output = self.fc(aggregated_output)
         return output

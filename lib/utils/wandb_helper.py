@@ -1,13 +1,10 @@
 import json
+import importlib.util
 from typing import Any, Dict, Optional
 from omegaconf import DictConfig, OmegaConf
 from lib.utils.logging import LoggerManager, LoggingConfig, WandBConfig
 
-try:
-    import wandb
-    HAS_WANDB = True
-except ImportError:
-    HAS_WANDB = False
+HAS_WANDB = importlib.util.find_spec("wandb") is not None
 
 
 def _patch_wandb_settings_serializer() -> None:
@@ -34,7 +31,7 @@ def _patch_wandb_settings_serializer() -> None:
                 data[key] = list(data[key])
         return data
 
-    model_dump_no_warn._span_patched = True  # type: ignore[attr-defined]
+    setattr(model_dump_no_warn, "_span_patched", True)
     Settings.model_dump = model_dump_no_warn
 
 
