@@ -5,6 +5,8 @@
 
 Official implementation of **SPAN: Learning Spatial-Preserving Hierarchical Representations for Digital Pathology**.
 
+To reduce redundant compute across the community and make our work more accessible, we have made all preprocessed data publicly available. The processed datasets can be downloaded from [Google Drive](https://drive.google.com/drive/folders/1N7yNi_QigARVNeOuxuzFia53UUTspAPd?usp=sharing).
+
 SPAN is two things at once:
 
 * the **reference model** from the CVPR 2026 paper, and
