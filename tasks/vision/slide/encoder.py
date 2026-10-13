@@ -43,8 +43,7 @@ def build_slide_encoder_bundle(
         )
 
     encoder_blocks = [
-        create_block(config, idx + 1, mask_padding=True)
-        for idx, config in enumerate(encoder_config)
+        create_block(config) for config in encoder_config
     ]
     encoder = SPAN_Encoder(
         encoder_blocks,

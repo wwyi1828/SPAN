@@ -9,7 +9,7 @@ def generate_swin_windows(matrix, w, use_shift=False):
     height_padding = (2 * w - h % (2 * w)) % (2 * w)
     width_padding = (2 * w - width % (2 * w)) % (2 * w)
 
-    if height_padding > 0 or width_padding > 0:
+    if height_padding > 0 or width_padding > 0 or use_shift:
         if use_shift:
             total_height_padding = w + height_padding
             total_width_padding = w + width_padding
@@ -47,29 +47,32 @@ ATTENTION_CONFIGS = {
 }
 
 class AttentionBuilder(nn.Module):
-    def __init__(self, window_size=1, mode='long', mask_padding=False):
+    def __init__(self, window_size=1, mode='long'):
         super(AttentionBuilder, self).__init__()
         self.window_size = window_size
 
         self.mode = mode
-        self.mask_padding = mask_padding
+        self.sentinel_mask = None
+
+    def _local_indices(self):
+        indices = torch.arange(self.positions.size(0), device=self.positions.device)
+        if self.sentinel_mask is not None:
+            return indices[~self.sentinel_mask]
+        return indices
 
     def edges_global2local(self):
         num_original = self.positions.size(0)
         num_globals = self.num_valid_globals
         num_nodes = self.positions.size(0) + self.num_valid_globals
 
-        valid_indices = torch.arange(0, num_original, device=self.positions.device)
-        valid_indices = valid_indices[1:-1]
+        valid_indices = self._local_indices()
         src_nodes = torch.arange(num_original, num_nodes, device=self.positions.device).repeat_interleave(len(valid_indices))
         dst_nodes = valid_indices.repeat(num_globals)
 
         return (src_nodes, dst_nodes)
 
     def edges_local_self_loop(self):
-        num_original = self.positions.size(0)
-        indices = torch.arange(0, num_original, device=self.positions.device)
-        indices = indices[1:-1]
+        indices = self._local_indices()
         src_nodes = indices
         dst_nodes = indices
 
@@ -89,8 +92,7 @@ class AttentionBuilder(nn.Module):
         num_globals = self.num_valid_globals
         num_nodes = self.positions.size(0) + self.num_valid_globals
 
-        valid_indices = torch.arange(0, num_original, device=self.positions.device)
-        valid_indices = valid_indices[1:-1]
+        valid_indices = self._local_indices()
         src_nodes = valid_indices.repeat_interleave(num_globals)
         dst_nodes = torch.arange(num_original, num_nodes, device=self.positions.device).repeat(len(valid_indices))
 
@@ -125,25 +127,21 @@ class AttentionBuilder(nn.Module):
         if mode == 'g2l':
             return self.edges_global2local()
         elif mode in ('wmsa', 'swmsa'):
-            num_nodes = self.positions.size(0)
             device = self.positions.device
 
-            if self.mask_padding:
-                # When padding, exclude first and last nodes (which are padding markers)
-                num_local = self.positions.size(0)
-                valid_indices = torch.arange(0, num_local, device=device)
-                valid_indices = valid_indices[1:-1]
-                node_shift_id = valid_indices + 1
-                node_pos = self.positions[valid_indices]
-            else:
-                # Create IDs only for local nodes (global nodes don't participate in spatial attention)
-                node_shift_id = torch.arange(1, self.positions.size(0) + 1, device=device)
-                node_pos = self.positions
+            valid_indices = self._local_indices()
+            node_shift_id = valid_indices + 1
+            node_pos = self.positions[valid_indices]
+            if node_pos.size(0) == 0:
+                empty = torch.empty(0, dtype=torch.long, device=device)
+                return empty, empty
 
             adjusted_positions = node_pos
             adjusted_positions = adjusted_positions.short().t()
 
-            chunk_size = (adjusted_positions[0].max() + 1, adjusted_positions[1].max() + 1)
+            # Sentinels carry the padded extent even though they have no attention edges.
+            extent_positions = self.positions.t()
+            chunk_size = (extent_positions[0].max() + 1, extent_positions[1].max() + 1)
             sparse_tensor = torch.sparse_coo_tensor(adjusted_positions, node_shift_id, size=chunk_size, device=device)
             dense_matrix = sparse_tensor.to_dense()
 
@@ -173,10 +171,13 @@ class AttentionBuilder(nn.Module):
 
             return (filtered_src - 1, filtered_dst - 1)
 
-    def forward(self, positions, valid_globals,  mode='long'):
+    def forward(self, positions, valid_globals, mode='long', sentinel_mask=None):
 
         self.positions = positions
         self.num_valid_globals = valid_globals
+        self.sentinel_mask = sentinel_mask
+        if sentinel_mask is not None:
+            self.sentinel_mask = sentinel_mask.to(device=positions.device, dtype=torch.bool)
 
         num_nodes = self.positions.size(0) + self.num_valid_globals
         device = self.positions.device
@@ -207,6 +208,9 @@ class AttentionBuilder(nn.Module):
         edges = {mode: self.build_graph(mode=mode) for mode in modes}
 
         valid_modes = [mode for mode in modes if edges[mode][0].numel() > 0 and edges[mode][1].numel() > 0]
+        if not valid_modes:
+            empty = torch.empty(0, dtype=torch.long, device=self.positions.device)
+            return empty, empty
         src = torch.cat([edges[mode][0] for mode in valid_modes], dim=0)
         dst = torch.cat([edges[mode][1] for mode in valid_modes], dim=0)
         return src, dst

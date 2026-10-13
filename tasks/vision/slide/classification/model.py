@@ -119,9 +119,10 @@ class SPANClassifier(nn.Module):
 
     def forward(self, ins_pos: torch.Tensor, feats: torch.Tensor) -> torch.Tensor:
 
-        ins_pos, feats = self.padder(ins_pos, feats)
+        ins_pos, feats, sentinel_mask = self.padder(ins_pos, feats)
 
-        coords, feats_list, global_feats, _, _ = self.encoder(ins_pos, feats)
+        coords, feats_list, global_feats, _, pos_dict = self.encoder(ins_pos, feats, sentinel_mask=sentinel_mask)
+        feats_list = [feat[~mask] for feat, mask in zip(feats_list, pos_dict.encoder_masks)]
         return self.aggregate(feats_list, global_feats)
 
     def aggregate(self, feats_list, global_feats) -> torch.Tensor:

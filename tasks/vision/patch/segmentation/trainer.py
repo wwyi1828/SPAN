@@ -35,10 +35,10 @@ def train_one_epoch(model, data_loader, optimizer, scheduler, padder, device, ce
         ins_pos = item.pos.to(device)
         feats = item.x.to(device)
         labels = (item.y >= threshold).float().unsqueeze(1).to(device)
-        ins_pos, feats = padder(ins_pos, feats)
-        ins_pos, feats_multi, global_feats, spatial_shape, pos_dict = model.encoder(ins_pos, feats)
+        ins_pos, feats, sentinel_mask = padder(ins_pos, feats)
+        ins_pos, feats_multi, global_feats, spatial_shape, pos_dict = model.encoder(ins_pos, feats, sentinel_mask=sentinel_mask)
         _, decoded_feats = model.decoder(ins_pos[-1], feats_multi, global_feats, spatial_shape, pos_dict)
-        logits = decoded_feats[-1][1:-1]
+        logits = decoded_feats[-1][~pos_dict.sentinel_mask]
         ce_loss = ce_loss_fn(logits, labels)
         dice_loss = dice_loss_fn(logits, labels)
         loss = (1 - dice_weight) * ce_loss + dice_weight * dice_loss if labels.sum() > 0 else ce_loss
@@ -67,10 +67,10 @@ def evaluate(model, data_loader, padder, device, ce_loss_fn, threshold, detailed
             ins_pos = item.pos.to(device)
             feats = item.x.to(device)
             labels = (item.y >= threshold).float().unsqueeze(1).to(device)
-            ins_pos, feats = padder(ins_pos, feats)
-            ins_pos, feats_multi, global_feats, spatial_shape, pos_dict = model.encoder(ins_pos, feats)
+            ins_pos, feats, sentinel_mask = padder(ins_pos, feats)
+            ins_pos, feats_multi, global_feats, spatial_shape, pos_dict = model.encoder(ins_pos, feats, sentinel_mask=sentinel_mask)
             _, decoded_feats = model.decoder(ins_pos[-1], feats_multi, global_feats, spatial_shape, pos_dict)
-            logits = decoded_feats[-1][1:-1]
+            logits = decoded_feats[-1][~pos_dict.sentinel_mask]
             ce_loss = ce_loss_fn(logits, labels)
             dice_loss = dice_loss_fn(logits, labels)
             total_ce += ce_loss.item()

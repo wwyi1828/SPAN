@@ -46,8 +46,8 @@ def train_one_epoch(model, data_loader, optimizer, scheduler, padder, device, cr
         stime = item.survival_time
         with torch.no_grad():
             ins_pos = ins_pos.int()
-        ins_pos, ins_feat = padder(ins_pos, ins_feat)
-        coord, feats, global_feats, spatial_shape, pos_dict = model.encoder(ins_pos, ins_feat)
+        ins_pos, ins_feat, sentinel_mask = padder(ins_pos, ins_feat)
+        coord, feats, global_feats, spatial_shape, pos_dict = model.encoder(ins_pos, ins_feat, sentinel_mask=sentinel_mask)
         if aggr_method == 'concat':
             global_feats = [_[0, None] for _ in global_feats]
             output = torch.cat(global_feats).view(1, -1)
@@ -56,7 +56,7 @@ def train_one_epoch(model, data_loader, optimizer, scheduler, padder, device, cr
             hazards = torch.sigmoid(output)
             S = torch.cumprod(1 - hazards, dim=1)
         elif aggr_method == 'addition':
-            output = torch.cat([feats[-1]], dim=0)
+            output = feats[-1][~pos_dict.sentinel_mask]
             hazards, S, Y_hat = model.aggregator.predict_survival(output)
         else:
             hazards, S, Y_hat = model.multi_aggregator.predict_survival(global_feats)
@@ -88,8 +88,8 @@ def evaluate(model, data_loader, padder, device, criterion, aggr_method):
         stime = item.survival_time
         with torch.no_grad():
             ins_pos = ins_pos.int()
-            ins_pos, ins_feat = padder(ins_pos, ins_feat)
-            coord, feats, global_feats, spatial_shape, pos_dict = model.encoder(ins_pos, ins_feat)
+            ins_pos, ins_feat, sentinel_mask = padder(ins_pos, ins_feat)
+            coord, feats, global_feats, spatial_shape, pos_dict = model.encoder(ins_pos, ins_feat, sentinel_mask=sentinel_mask)
             if aggr_method == 'concat':
                 global_feats = [_[0, None] for _ in global_feats]
                 output = torch.cat(global_feats).view(1, -1)
@@ -98,7 +98,7 @@ def evaluate(model, data_loader, padder, device, criterion, aggr_method):
                 hazards = torch.sigmoid(output)
                 S = torch.cumprod(1 - hazards, dim=1)
             elif aggr_method == 'addition':
-                output = torch.cat([feats[-1]], dim=0)
+                output = feats[-1][~pos_dict.sentinel_mask]
                 hazards, S, Y_hat = model.aggregator.predict_survival(output)
             else:
                 hazards, S, Y_hat = model.multi_aggregator.predict_survival(global_feats)

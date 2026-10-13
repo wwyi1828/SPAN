@@ -26,8 +26,8 @@ def build_model(cfg: DictConfig):
         n_layers=model_components['ds_layers'],
         pad_feats=None,
     )
-    encoder_blocks = [create_block(config, i + 1, mask_padding=True) for i, config in enumerate(encoder_config)]
-    decoder_blocks = [create_block(config, len(decoder_config) - i) for i, config in enumerate(decoder_config)]
+    encoder_blocks = [create_block(config) for config in encoder_config]
+    decoder_blocks = [create_block(config) for config in decoder_config]
     encoder = SPAN_Encoder(
         encoder_blocks,
         embed_dim=in_channels,
