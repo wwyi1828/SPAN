@@ -9,10 +9,9 @@ task: "segmentation"
 dataset: "C16"
 seed: 42
 epochs: 40
-eval_metric_freq: null
 num_workers: 12
-features_dim: 1024
 features_variant: "R50"
+features_dim: null
 data_root: ${oc.env:SPAN_DATA_ROOT,data}
 
 model:

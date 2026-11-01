@@ -1,21 +1,20 @@
-"""Utilities for working with precomputed feature variants."""
-from __future__ import annotations
+from numbers import Integral
+from typing import Optional
 
-from typing import Any
-
-# Known embedding dimensions for supported feature variants.
 _FEATURE_DIM_MAP = {
+    "R50": 1024,
+    "UNI": 1024,
     "PLIP": 768,
     "V2": 1280,
     "CONCH": 512,
 }
 
-_DEFAULT_DIM = 1024
 
-
-def resolve_feature_dim(features_variant: Any, default: int = _DEFAULT_DIM) -> int:
-    """Return the embedding dimension associated with a feature variant name."""
-    if features_variant is None:
-        return default
-    variant_key = str(features_variant).upper()
-    return _FEATURE_DIM_MAP.get(variant_key, default)
+def resolve_feature_dim(features_variant: str, features_dim: Optional[int] = None) -> int:
+    if features_dim is not None:
+        if isinstance(features_dim, bool) or not isinstance(features_dim, Integral) or features_dim <= 0:
+            raise ValueError(f"features_dim must be a positive integer, got {features_dim!r}")
+        return int(features_dim)
+    if not isinstance(features_variant, str) or features_variant.strip().upper() not in _FEATURE_DIM_MAP:
+        raise ValueError(f"Unknown feature variant: {features_variant!r}; set features_dim explicitly for custom features")
+    return _FEATURE_DIM_MAP[features_variant.strip().upper()]

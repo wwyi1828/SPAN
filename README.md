@@ -87,7 +87,7 @@ The model uses integer lattice coordinates for spatial indexing, downsampling,
 and attention windows. The default loader divides stored coordinates by 224, subtracts the per-axis
 minimum, and casts them to integers. It does not check whether this conversion
 merges sites.
-See [`normalize_coords`](tasks/vision/shared/data.py).
+See [`normalize_coords`](tasks/vision/shared/h5.py).
 
 | Stored `cords` | After normalization and integer conversion | Interpretation |
 |---|---|---|
@@ -247,10 +247,12 @@ Top-level run settings shared by all tasks:
 | --- | --- |
 | `task` | Task name, used for run naming and result paths. |
 | `dataset` | Which dataset/loader to use (e.g. `C16`, `TCGA_BRAC`). |
-| `features_variant` | Which pre-extracted feature set to read (e.g. `R50`, `UNI`). |
+| `features_variant` | Feature set name: `R50` / `UNI` (1024), `PLIP` (768), `V2` (1280), or `CONCH` (512). Custom names require `features_dim`. |
 | `data_root` | Folder holding the H5 feature files. Defaults to `$SPAN_DATA_ROOT` or `data`. |
+| `features_dim` | Optional explicit input dimension for custom feature variants; known variants are resolved automatically. |
 | `seed` / `epochs` / `num_workers` | Standard training run settings. |
 | `n_groups` | (survival only) Number of discrete-time risk bins. |
+| `clinical_root` | (survival only) Clinical metadata folder; defaults to `$SPAN_CLINICAL_ROOT` or `data_root/TCGA_clinical`. |
 
 Each task file also has a block of **task-specific** options:
 
@@ -260,7 +262,7 @@ Each task file also has a block of **task-specific** options:
 | `training.coord_aug` | `enabled`, `schedule`, `mirror` / `shear` / `rotate` / `drop` | Coordinate-space augmentation on the patch grid, with an optional cosine schedule that anneals the augmentation strength over training. |
 | `classification` | `aggr_method`, `cls_drop`, `head_act`, `head_div`, `head_norm` | Slide-level aggregation head and its dropout/activation/norm. |
 | `segmentation` | `dice_weight`, `threshold` | Dice/BCE loss mix and the decision threshold for patch prediction. |
-| `survival` | `alpha`, `aggregation`, `cls_drop`, `head_act` | Survival loss balance and the aggregation head. |
+| `survival` | `alpha`, `aggregation`, `cls_drop` | Survival loss balance and the aggregation head. |
 
 ### Model config (`model/span.yaml`, `model/segmentation_span.yaml`)
 
@@ -310,12 +312,20 @@ SPAN is built from interchangeable sparse blocks selected through the model conf
 | `pixelshuffle` | Sparse pixel-shuffle upsample | Sub-pixel expansion on the grid |
 | `convnext` / `linear` / `projection` / `identity` | Same-resolution feature blocks | No spatial change |
 
-Most blocks provide sparse (also available with the `s_` prefix) and dense
-(`d_`) implementations of the same operation, such as `d_patchmerge` and
-`d_pixelshuffle`. The default configurations use sparse implementations, which
-were faster in our benchmarks at typical tissue sparsity. Depthwise blocks such
-as `dwpatchconv` were an exception: the dense implementation was slightly faster.
-Performance still depends on tissue occupancy, coordinate range, and hardware.
+Convolution, resampling, and attention now use custom GPU kernels on the patch grid, improving runtime over the previous release. On a TITAN RTX, a 128×128 grid with about 30% of the cells occupied (4853 patches, 1024-d, FP32):
+
+| Blocks | Forward | Training |
+| --- | --- | --- |
+| depthwise down, transpose up | 40.8 ms → 21.4 ms | 104.1 ms → 62.3 ms |
+| convolution, pixel shuffle | 42.3 ms → 30.1 ms | 94.8 ms → 79.0 ms |
+| patch merge, transpose up | 41.7 ms → 23.3 ms | 102.9 ms → 67.9 ms |
+
+Depthwise convolution variants use one group per input channel, so the output
+channel count must be a multiple of the input channel count. In particular,
+`dwpatchinvs` cannot directly reduce decoder channels. For a depthwise decoder,
+use compatible settings such as `model.channel_factor=1 model.connection=add`;
+use `patchinvs` or `pixelshuffle` when reducing channels or using concat skips.
+Incompatible grouped convolution settings are rejected during configuration building.
 
 ### Window / global attention (`trans_type` / `dtrans_type`)
 

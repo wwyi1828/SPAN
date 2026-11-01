@@ -80,8 +80,7 @@ class LoggerManager:
         log_data = {"epoch": epoch, **metrics}
         self.epoch_logs.append(log_data)
 
-        # Always log to wandb during training, regardless of mode
-        # log_mode only controls when to save final results locally
+        # Send epoch metrics whenever W&B is enabled.
         if self.run:
             try:
                 wandb.log(log_data)
@@ -150,7 +149,6 @@ class LoggerManager:
 # ========== Unified Results & Logs Management ==========
 
 def get_results_path(results_dir: Union[str, Path], filename: str) -> Path:
-    """Get full path for results file (auto-adds .json extension)."""
     results_path = Path(results_dir)
     results_path.mkdir(parents=True, exist_ok=True)
     if not filename.endswith('.json'):
@@ -159,7 +157,6 @@ def get_results_path(results_dir: Union[str, Path], filename: str) -> Path:
 
 
 def save_results(data: Dict[str, Any], results_dir: Union[str, Path], filename: str) -> Path:
-    """Save results to JSON file."""
     result_path = get_results_path(results_dir, filename)
     tmp_path = result_path.with_name(f"{result_path.name}.tmp.{os.getpid()}")
     with open(tmp_path, 'w') as f:
@@ -176,7 +173,6 @@ def update_results_file(
     filename: str,
     updater: Callable[[Dict[str, Any]], None],
 ) -> Path:
-    """Apply an in-place update to a results JSON under an inter-process file lock."""
     result_path = get_results_path(results_dir, filename)
     lock_path = result_path.with_suffix(result_path.suffix + ".lock")
 
@@ -208,40 +204,37 @@ def save_metrics(
     extra_fields: Optional[Dict[str, Any]] = None,
     num_seeds: int = 5
 ) -> None:
-    """
-    Save metrics in hierarchical format: {dataset: {run_signature: {metrics: {name: [seed0, ...]}}}}
+    slot_index = int(seed)
+    if slot_index < 0:
+        raise ValueError("seed must be non-negative")
+    slot_count = max(num_seeds, slot_index + 1)
 
-    Args:
-        extra_fields: Optional dict for per-run fields (e.g., {'aucs': [0.9, 0.8]})
-    """
+    def mapping(parent, key):
+        if key not in parent:
+            parent[key] = {}
+        if not isinstance(parent[key], dict):
+            raise ValueError(f"Results field {key!r} must be a mapping")
+        return parent[key]
+
+    def slots(parent, key):
+        if key not in parent:
+            parent[key] = [None] * slot_count
+        values = parent[key]
+        if not isinstance(values, list):
+            raise ValueError(f"Results field {key!r} must be a list")
+        values.extend([None] * max(0, slot_count - len(values)))
+        return values
+
     def _update(results: Dict[str, Any]) -> None:
-        dataset_store = results.setdefault(dataset, {})
-        signature_store = dataset_store.setdefault(run_signature, {})
-
+        if not isinstance(results, dict):
+            raise ValueError("Results file must contain a mapping")
+        signature_store = mapping(mapping(results, dataset), run_signature)
+        metric_store = mapping(signature_store, "metrics")
         names = metric_names if metric_names is not None else list(metrics.keys())
-
-        metric_store = signature_store.get("metrics")
-        if not isinstance(metric_store, dict):
-            metric_store = {name: [None] * num_seeds for name in names}
-            signature_store["metrics"] = metric_store
-        else:
-            for name in names:
-                if name not in metric_store or not isinstance(metric_store[name], list):
-                    metric_store[name] = [None] * num_seeds
-                elif len(metric_store[name]) < num_seeds:
-                    metric_store[name].extend([None] * (num_seeds - len(metric_store[name])))
-
-        slot_index = int(seed)
         for name in names:
-            if name in metrics:
-                metric_store[name][slot_index] = metrics[name]
-
+            slots(metric_store, name)[slot_index] = metrics[name]
         if extra_fields:
-            for field_name, field_value in extra_fields.items():
-                field_slots = signature_store.get(field_name)
-                if not isinstance(field_slots, list) or len(field_slots) != num_seeds:
-                    field_slots = [None] * num_seeds
-                    signature_store[field_name] = field_slots
-                field_slots[slot_index] = field_value
+            for name, value in extra_fields.items():
+                slots(signature_store, name)[slot_index] = value
 
     update_results_file(results_dir, filename, _update)

@@ -1,19 +1,8 @@
 import torch
 import torch.nn as nn
-from ..attention_aggregators import MultiAggregator
 
 
-class SurvivalMixin:
-
-    def predict_survival(self, x):
-        output = self.forward(x)
-        Y_hat = torch.topk(output, 1, dim=1)[1]
-        hazards = torch.sigmoid(output)
-        S = torch.cumprod(1 - hazards, dim=1)
-        return hazards, S, Y_hat
-
-
-class SurvivalAggregator(SurvivalMixin, nn.Module):
+class SurvivalAggregator(nn.Module):
     def __init__(self, input_dim=512, dropout=0.0, num_classes=1):
         super().__init__()
         self.norm = nn.LayerNorm(input_dim)
@@ -25,7 +14,3 @@ class SurvivalAggregator(SurvivalMixin, nn.Module):
         mean_feat = torch.mean(x, dim=0, keepdim=True)
         pooled = max_feat + mean_feat
         return self.fc(self.dropout(self.norm(pooled)))
-
-
-class SurvivalMultiAggregator(SurvivalMixin, MultiAggregator):
-    pass

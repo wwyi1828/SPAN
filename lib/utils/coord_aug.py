@@ -1,4 +1,3 @@
-"""Coordinate augmentation config helpers."""
 from __future__ import annotations
 
 import math
@@ -14,7 +13,6 @@ from src.span.preprocessing import (
 
 
 def build_coord_aug_transform(cfg) -> Optional[ComposeTransforms]:
-    """Build coordinate augmentation transform from cfg.training.coord_aug."""
     training_cfg = cfg.get("training", {})
     coord_aug_cfg = training_cfg.get("coord_aug")
     if coord_aug_cfg is None:

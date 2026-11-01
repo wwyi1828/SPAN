@@ -3,6 +3,7 @@ channel_factor: 1
 trans_type: "long"
 dtrans_type: "long"
 econvs_type: "patchconv"
+sparse_backend: auto
 dconvs_type: "pixelshuffle"
 enc_act: 'ReLU'
 embed_dim_div: 2

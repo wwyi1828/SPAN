@@ -1,6 +1,5 @@
 torch
 timm
-dgl
 hydra-core
 omegaconf
 numpy

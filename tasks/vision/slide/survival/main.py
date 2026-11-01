@@ -55,7 +55,6 @@ def build_run_signature(cfg: DictConfig) -> str:
 
 
 def save_results(cfg: DictConfig, metrics: Metrics) -> None:
-    """Save survival prediction results using the unified logging interface."""
     save_path = cfg.logging.results.get("save_path")
     if save_path is None:
         return

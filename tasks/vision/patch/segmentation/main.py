@@ -4,7 +4,6 @@ from omegaconf import DictConfig
 from lib.utils.entrypoint import initialize_hydra_run
 from tasks.vision.shared.data import DatasetBundle, prepare_segmentation_dataset
 from .trainer import run_training, Metrics
-from tasks.vision.shared.features import resolve_feature_dim
 from lib.utils.model_utils import format_token_init_types
 from lib.utils.logging import save_metrics
 
@@ -24,7 +23,6 @@ def build_run_signature(cfg: DictConfig) -> str:
 
 
 def save_results(cfg: DictConfig, metrics: Metrics) -> None:
-    """Save segmentation results using the unified logging interface."""
     save_path = cfg.logging.results.get("save_path")
     if save_path is None:
         return
@@ -44,15 +42,10 @@ def save_results(cfg: DictConfig, metrics: Metrics) -> None:
 
 @hydra.main(version_base=None, config_path="../../../../configs", config_name="segmentation")
 def main(cfg: DictConfig) -> None:
-    def _sync_features_dim(run_cfg: DictConfig) -> None:
-        # Sync features_dim with features_variant (PLIP=768, V2=1280, CONCH=512, default=1024)
-        run_cfg.features_dim = resolve_feature_dim(run_cfg.get('features_variant', 'R50'))
-
     cfg = initialize_hydra_run(
         cfg,
         "SPAN Patch Segmentation - Hydra Configuration",
         seed=cfg.seed,
-        mutate_cfg=_sync_features_dim,
     )
     dataset_bundle: DatasetBundle = prepare_segmentation_dataset(cfg)
     best_metrics = run_training(cfg, dataset_bundle)

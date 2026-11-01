@@ -14,13 +14,6 @@ def get_sorted_indices(pos):
     return sorted_indices
 
 def map_to_integer_grid(coords, initial_radius=10, expansion_factor=1.1, max_attempts=1000):
-    """Snap points to distinct cells in the original greedy processing order.
-
-    Most points retain their nearest cell. Only collisions need a sequential
-    search; dense occupancy arrays let those searches inspect a whole ring at
-    once. Unusually sparse coordinate ranges use the original implementation
-    so the optimization cannot allocate an enormous grid.
-    """
     def fallback():
         return _map_to_integer_grid_sparse(
             coords, initial_radius, expansion_factor, max_attempts
@@ -151,7 +144,6 @@ def map_to_integer_grid(coords, initial_radius=10, expansion_factor=1.1, max_att
 
 @lru_cache(maxsize=4)
 def _grid_ring_offsets(search_radius):
-    """Offsets in the same visitation order as the original nested loops."""
     rings = []
     for radius in range(1, search_radius + 1):
         across = np.arange(-radius, radius + 1, dtype=np.int64)
@@ -164,7 +156,6 @@ def _grid_ring_offsets(search_radius):
 
 
 def _map_to_integer_grid_sparse(coords, initial_radius=10, expansion_factor=1.1, max_attempts=1000):
-    """Use sparse occupancy when a dense grid exceeds memory or precision limits."""
 
     normalized_coords = coords
     distances = torch.sum((normalized_coords - torch.round(normalized_coords))**2, dim=1)

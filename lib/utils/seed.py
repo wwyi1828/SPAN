@@ -1,4 +1,3 @@
-"""Utilities for reproducible seeding across tasks."""
 from __future__ import annotations
 
 import os
@@ -9,7 +8,6 @@ import torch
 
 
 def setup_seeds(seed: int, set_hash_seed: bool = True) -> None:
-    """Set Python/NumPy/PyTorch random seeds."""
     seed = int(seed)
     random.seed(seed)
     np.random.seed(seed)

@@ -32,7 +32,7 @@ class NLLSurvLoss:
             return nll_loss(hazards, S, Y, c, alpha=alpha)
 
 
-def train_one_epoch(model, data_loader, optimizer, scheduler, padder, device, criterion, aggr_method):
+def train_one_epoch(model, data_loader, optimizer, scheduler, device, criterion):
     total_loss = 0
     all_risk_scores = []
     all_censorships = []
@@ -44,23 +44,8 @@ def train_one_epoch(model, data_loader, optimizer, scheduler, padder, device, cr
         status = item.censorship
         label = item.survival_label
         stime = item.survival_time
-        with torch.no_grad():
-            ins_pos = ins_pos.int()
-        ins_pos, ins_feat, sentinel_mask = padder(ins_pos, ins_feat)
-        coord, feats, global_feats, spatial_shape, pos_dict = model.encoder(ins_pos, ins_feat, sentinel_mask=sentinel_mask)
-        if aggr_method == 'concat':
-            global_feats = [_[0, None] for _ in global_feats]
-            output = torch.cat(global_feats).view(1, -1)
-            output = model.classifier_1(output)
-            Y_hat = torch.topk(output, 1, dim = 1)[1]
-            hazards = torch.sigmoid(output)
-            S = torch.cumprod(1 - hazards, dim=1)
-        elif aggr_method == 'addition':
-            output = feats[-1][~pos_dict.sentinel_mask]
-            hazards, S, Y_hat = model.aggregator.predict_survival(output)
-        else:
-            hazards, S, Y_hat = model.multi_aggregator.predict_survival(global_feats)
-        loss = criterion(hazards=hazards, S=S, Y=label.unsqueeze(1).cuda(), c=status.unsqueeze(1).cuda())
+        hazards, S = model(ins_pos, ins_feat)
+        loss = criterion(hazards=hazards, S=S, Y=label.unsqueeze(1).to(device), c=status.unsqueeze(1).to(device))
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
@@ -74,7 +59,7 @@ def train_one_epoch(model, data_loader, optimizer, scheduler, padder, device, cr
     return total_loss/len(data_loader), c_index
 
 
-def evaluate(model, data_loader, padder, device, criterion, aggr_method):
+def evaluate(model, data_loader, device, criterion):
     total_loss = 0
     all_risk_scores = []
     all_censorships = []
@@ -87,22 +72,8 @@ def evaluate(model, data_loader, padder, device, criterion, aggr_method):
         label = item.survival_label
         stime = item.survival_time
         with torch.no_grad():
-            ins_pos = ins_pos.int()
-            ins_pos, ins_feat, sentinel_mask = padder(ins_pos, ins_feat)
-            coord, feats, global_feats, spatial_shape, pos_dict = model.encoder(ins_pos, ins_feat, sentinel_mask=sentinel_mask)
-            if aggr_method == 'concat':
-                global_feats = [_[0, None] for _ in global_feats]
-                output = torch.cat(global_feats).view(1, -1)
-                output = model.classifier_1(output)
-                Y_hat = torch.topk(output, 1, dim = 1)[1]
-                hazards = torch.sigmoid(output)
-                S = torch.cumprod(1 - hazards, dim=1)
-            elif aggr_method == 'addition':
-                output = feats[-1][~pos_dict.sentinel_mask]
-                hazards, S, Y_hat = model.aggregator.predict_survival(output)
-            else:
-                hazards, S, Y_hat = model.multi_aggregator.predict_survival(global_feats)
-            loss = criterion(hazards=hazards, S=S, Y=label.unsqueeze(1).cuda(), c=status.unsqueeze(1).cuda())
+            hazards, S = model(ins_pos, ins_feat)
+            loss = criterion(hazards=hazards, S=S, Y=label.unsqueeze(1).to(device), c=status.unsqueeze(1).to(device))
             total_loss += loss.item()
             risk = -torch.sum(S, dim=1).detach().cpu().item()
             all_risk_scores.append(risk)
@@ -113,12 +84,11 @@ def evaluate(model, data_loader, padder, device, criterion, aggr_method):
 
 
 def run_training(cfg: DictConfig, dataset) -> Metrics:
-    model, padder = build_model(cfg)
+    model, _ = build_model(cfg)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
     logger = create_logger(cfg)
     criterion = NLLSurvLoss(alpha=cfg.survival.alpha)
-    aggr_method = cfg.survival.aggregation
     optimizer = AdamW(model.parameters(), lr=cfg.training.lr, weight_decay=cfg.training.weight_decay)
     scheduler = CosineAnnealingLR(optimizer, T_max=cfg.epochs)
     patience = cfg.training.get("early_stop_patience", 0)
@@ -127,9 +97,9 @@ def run_training(cfg: DictConfig, dataset) -> Metrics:
     epochs_no_improve = 0
     for epoch in range(cfg.epochs):
         update_coord_aug_multiplier(cfg, dataset.train, epoch + 1, cfg.epochs)
-        train_loss, train_cindex = train_one_epoch(model, dataset.train, optimizer, scheduler, padder, device, criterion, aggr_method)
-        val_loss, val_cindex = evaluate(model, dataset.val, padder, device, criterion, aggr_method)
-        test_loss, test_cindex = evaluate(model, dataset.test, padder, device, criterion, aggr_method)
+        train_loss, train_cindex = train_one_epoch(model, dataset.train, optimizer, scheduler, device, criterion)
+        val_loss, val_cindex = evaluate(model, dataset.val, device, criterion)
+        test_loss, test_cindex = evaluate(model, dataset.test, device, criterion)
         if logger:
             logger.log_epoch(epoch + 1, {
                 'train_loss': train_loss,
@@ -158,5 +128,8 @@ def run_training(cfg: DictConfig, dataset) -> Metrics:
             print(f"Early stopping at epoch {epoch + 1}, no improvement for {patience} epochs.")
             break
     model.load_state_dict(best_model_state)
-    test_loss, test_cindex = evaluate(model, dataset.test, padder, device, criterion, aggr_method)
+    test_loss, test_cindex = evaluate(model, dataset.test, device, criterion)
+    if logger:
+        logger.log_best({"test_loss": test_loss, "test_cindex": test_cindex, "val_cindex": best_cindex})
+        logger.finish()
     return Metrics(loss=test_loss, c_index=test_cindex)

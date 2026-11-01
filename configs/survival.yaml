@@ -9,11 +9,12 @@ task: "survival"
 dataset: "TCGA_BRAC"
 seed: 0
 epochs: 50
-eval_metric_freq: null
 num_workers: 8
 
 features_variant: "UNI"
+features_dim: null
 data_root: ${oc.env:SPAN_DATA_ROOT,data}
+clinical_root: null
 
 n_groups: 4
 
@@ -59,7 +60,6 @@ survival:
   alpha: 0.0
   aggregation: "multi_addition"
   cls_drop: 0.05
-  head_act: "relu"
 
 logging:
   results:

@@ -17,6 +17,8 @@ class RandomTransform:
 
 class RandomDrop:
     def __init__(self, p=0.0):
+        if not 0 <= p <= 1:
+            raise ValueError("Drop probability must be between 0 and 1")
         self.base_p = p
         self.p = p
         
@@ -24,10 +26,14 @@ class RandomDrop:
         self.p = self.base_p * multiplier
 
     def __call__(self, num_points, device):
+        if num_points == 0:
+            raise ValueError("Cannot drop points from an empty slide")
         if self.p <= 0:
             return None
         # Keep with probability 1-p
         mask = torch.rand(num_points, device=device) > self.p
+        if not mask.any():
+            mask[torch.randint(num_points, (1,), device=device)] = True
         return mask
 
 class RandomMirror(RandomTransform):
@@ -128,6 +134,8 @@ class ComposeTransforms:
 
     def __call__(self, pos):
 
+        if pos.ndim != 2 or pos.shape[1] != 2 or pos.shape[0] == 0:
+            raise ValueError("Coordinates must have nonempty shape [num_patches, 2]")
         pos = pos.float()
         center = torch.round(torch.mean(pos, dim=0))
         centered_pos = pos - center
@@ -149,6 +157,8 @@ class ComposeTransforms:
         transformed_pos = torch.matmul(centered_pos, transform_matrix)
         
         if drop_mask is not None:
+            if not drop_mask.any():
+                drop_mask[torch.randint(len(pos), (1,), device=pos.device)] = True
             transformed_pos = transformed_pos[drop_mask]
 
         min_pos = transformed_pos.min(dim=0, keepdim=True).values

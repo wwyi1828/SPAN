@@ -25,7 +25,7 @@ class Metrics:
     precision: Optional[float] = None
 
 
-def train_one_epoch(model, data_loader, optimizer, scheduler, padder, device, ce_loss_fn, threshold, dice_weight):
+def train_one_epoch(model, data_loader, optimizer, scheduler, device, ce_loss_fn, threshold, dice_weight):
     model.train()
     total_ce = 0.0
     total_dice = 0.0
@@ -35,10 +35,7 @@ def train_one_epoch(model, data_loader, optimizer, scheduler, padder, device, ce
         ins_pos = item.pos.to(device)
         feats = item.x.to(device)
         labels = (item.y >= threshold).float().unsqueeze(1).to(device)
-        ins_pos, feats, sentinel_mask = padder(ins_pos, feats)
-        ins_pos, feats_multi, global_feats, spatial_shape, pos_dict = model.encoder(ins_pos, feats, sentinel_mask=sentinel_mask)
-        _, decoded_feats = model.decoder(ins_pos[-1], feats_multi, global_feats, spatial_shape, pos_dict)
-        logits = decoded_feats[-1][~pos_dict.sentinel_mask]
+        logits = model(ins_pos, feats)
         ce_loss = ce_loss_fn(logits, labels)
         dice_loss = dice_loss_fn(logits, labels)
         loss = (1 - dice_weight) * ce_loss + dice_weight * dice_loss if labels.sum() > 0 else ce_loss
@@ -56,7 +53,7 @@ def train_one_epoch(model, data_loader, optimizer, scheduler, padder, device, ce
     return Metrics(ce=avg_ce, dice=avg_dice, f1=f1_score(labels_all, preds_all, zero_division=0), iou=jaccard_score(labels_all, preds_all, zero_division=0))
 
 
-def evaluate(model, data_loader, padder, device, ce_loss_fn, threshold, detailed: bool):
+def evaluate(model, data_loader, device, ce_loss_fn, threshold, detailed: bool):
     model.eval()
     total_ce = 0.0
     total_dice = 0.0
@@ -67,10 +64,7 @@ def evaluate(model, data_loader, padder, device, ce_loss_fn, threshold, detailed
             ins_pos = item.pos.to(device)
             feats = item.x.to(device)
             labels = (item.y >= threshold).float().unsqueeze(1).to(device)
-            ins_pos, feats, sentinel_mask = padder(ins_pos, feats)
-            ins_pos, feats_multi, global_feats, spatial_shape, pos_dict = model.encoder(ins_pos, feats, sentinel_mask=sentinel_mask)
-            _, decoded_feats = model.decoder(ins_pos[-1], feats_multi, global_feats, spatial_shape, pos_dict)
-            logits = decoded_feats[-1][~pos_dict.sentinel_mask]
+            logits = model(ins_pos, feats)
             ce_loss = ce_loss_fn(logits, labels)
             dice_loss = dice_loss_fn(logits, labels)
             total_ce += ce_loss.item()
@@ -90,7 +84,7 @@ def evaluate(model, data_loader, padder, device, ce_loss_fn, threshold, detailed
 
 
 def run_training(cfg: DictConfig, dataset) -> Metrics:
-    model, padder = build_model(cfg)
+    model, _ = build_model(cfg)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
     logger = create_logger(cfg)
@@ -105,13 +99,13 @@ def run_training(cfg: DictConfig, dataset) -> Metrics:
     best_val_metrics = None
     for epoch in range(cfg.epochs):
         update_coord_aug_multiplier(cfg, dataset.train, epoch + 1, cfg.epochs)
-        train_metrics = train_one_epoch(model, dataset.train, optimizer, scheduler, padder, device, ce_loss_fn, threshold, dice_weight)
-        val_metrics = evaluate(model, dataset.val, padder, device, ce_loss_fn, threshold, detailed=False)
+        train_metrics = train_one_epoch(model, dataset.train, optimizer, scheduler, device, ce_loss_fn, threshold, dice_weight)
+        val_metrics = evaluate(model, dataset.val, device, ce_loss_fn, threshold, detailed=False)
         if (val_metrics.f1 + val_metrics.iou) / 2 >= best_val:
             best_val = (val_metrics.f1 + val_metrics.iou) / 2
             best_state = copy.deepcopy(model.state_dict())
             best_val_metrics = val_metrics
-        test_metrics = evaluate(model, dataset.test, padder, device, ce_loss_fn, threshold, detailed=True)
+        test_metrics = evaluate(model, dataset.test, device, ce_loss_fn, threshold, detailed=True)
         if logger:
             logger.log_epoch(
                 epoch + 1,
@@ -135,7 +129,7 @@ def run_training(cfg: DictConfig, dataset) -> Metrics:
             f"Test F1: {test_metrics.f1:.4f}, IoU: {test_metrics.iou:.4f}"
         )
     model.load_state_dict(best_state)
-    final_metrics = evaluate(model, dataset.test, padder, device, ce_loss_fn, threshold, detailed=True)
+    final_metrics = evaluate(model, dataset.test, device, ce_loss_fn, threshold, detailed=True)
     if logger:
         payload = {
             "val/f1": float(best_val_metrics.f1 if best_val_metrics else 0.0),

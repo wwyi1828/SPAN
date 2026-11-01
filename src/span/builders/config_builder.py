@@ -93,6 +93,8 @@ def build_model_config(cfg, num_outputs, in_channels=1024, enc_act='relu'):
         skip_first = cfg.model.get('skip_first', 1)
         decoder_config = []
 
+    _validate_convolution_channels(encoder_config + decoder_config)
+
     token_init_types = cfg.model.get('token_init_types', [1e-4])
 
     model_components = {
@@ -106,6 +108,18 @@ def build_model_config(cfg, num_outputs, in_channels=1024, enc_act='relu'):
         'skip_first': skip_first,
         'token_init_types': token_init_types
     }
+
+    sparse_backend = cfg.model.get('sparse_backend', 'auto')
+    if sparse_backend not in ('auto', 'torch', 'triton'):
+        raise ValueError("sparse_backend must be auto/torch/triton")
+    for block in encoder_config + decoder_config:
+        for kind, layers in block:
+            if kind == 'convs':
+                for layer in layers:
+                    if layer['layer_type'] not in ('linear', 'projection', 'identity'):
+                        layer['sparse_backend'] = sparse_backend
+            elif kind == 'attn_builder':
+                layers['backend'] = sparse_backend
 
     return encoder_config, decoder_config, model_components
 
@@ -286,3 +300,23 @@ def _build_decoder_config(decoder_config_string, encoder_config_string,
     decoder_config.append(final_layer)
 
     return decoder_config
+
+
+def _validate_convolution_channels(blocks):
+    for stage, block in enumerate(blocks):
+        for kind, configs in block:
+            if kind != 'convs':
+                continue
+            for config in configs:
+                layer = config['layer_type']
+                if layer not in ('patchconv', 'dwpatchconv', 'patchinvs', 'dwpatchinvs'):
+                    continue
+                inputs, outputs = config['in_channels'], config['out_channels']
+                groups = inputs if layer.startswith('dw') else config.get('groups', 1)
+                if groups <= 0 or inputs % groups or outputs % groups:
+                    raise ValueError(
+                        f"Stage {stage}, {layer}: in_channels={inputs}, out_channels={outputs}, "
+                        f"groups={groups}; both channel counts must be divisible by groups. "
+                        "Depthwise layers cannot reduce channels directly. Use patchinvs or "
+                        "pixelshuffle, or choose compatible channel_factor and connection settings."
+                    )

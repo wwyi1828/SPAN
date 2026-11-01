@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn as nn
 from .layers.attention import AttentionBuilder
@@ -120,7 +121,7 @@ class SPAN_Block(nn.Module):
                 attn_builder = step[1]
                 compute_1, compute_2 = attn_builder(
                     ins_pos, global_feat.size(0), mode=attn_builder.mode,
-                    sentinel_mask=pos_dict.sentinel_mask,
+                    sentinel_mask=pos_dict.sentinel_mask, spatial_shape=spatial_shape,
                 )
 
             elif step_type == 'trans':
@@ -129,7 +130,7 @@ class SPAN_Block(nn.Module):
                 trans_layers = self.modules_dict[module_name]
 
                 for trans_layer in trans_layers:
-                    feat, global_feat = trans_layer(feat, global_feat, g1=compute_1, g2=compute_2, ins_pos=attn_builder.positions)
+                    feat, global_feat = trans_layer(feat, global_feat, plan1=compute_1, plan2=compute_2, ins_pos=attn_builder.positions)
                     feat = feat.masked_fill(pos_dict.sentinel_mask[:, None], 0)
 
             elif step_type == 'skipc':
@@ -163,7 +164,9 @@ class SPAN_Encoder(nn.Module):
         learnable_tokens = []
 
         for t_type in token_init_types:
-            if isinstance(t_type, (int, float)):
+            if isinstance(t_type, (int, float)) and not isinstance(t_type, bool):
+                if not math.isfinite(t_type) or t_type <= 0:
+                    raise ValueError(f"Token standard deviation must be finite and positive: {t_type!r}")
                 token = torch.randn(1, embed_dim)
                 trunc_normal_(token, mean=0.0, std=float(t_type))
                 self.token_specs.append(("rand", len(random_tokens)))
@@ -187,8 +190,10 @@ class SPAN_Encoder(nn.Module):
                     else:
                         try:
                             std = float(rest)
-                        except ValueError:
-                            break
+                        except ValueError as error:
+                            raise ValueError(f"Invalid token specification: {t_type!r}") from error
+                    if not math.isfinite(std) or std <= 0:
+                        raise ValueError(f"Token standard deviation must be finite and positive: {t_type!r}")
                     token = torch.randn(1, embed_dim)
                     trunc_normal_(token, mean=0.0, std=std)
                     if prefix == "fix":
@@ -203,7 +208,7 @@ class SPAN_Encoder(nn.Module):
                 if parsed:
                     continue
 
-            self.token_specs.append(("none", None))
+            raise ValueError(f"Unknown token specification: {t_type!r}; use max, mean, std, fix<scale>, lrn<scale>, or a positive scale")
 
         if random_tokens:
             self.register_buffer("random_tokens", torch.cat(random_tokens, dim=0))

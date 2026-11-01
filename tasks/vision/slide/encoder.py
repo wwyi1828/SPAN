@@ -27,7 +27,7 @@ def build_slide_encoder_bundle(
     require_channel_factor: Optional[int] = None,
 ) -> SlideEncoderBundle:
     fv = getattr(cfg, "features_variant", default_features_variant)
-    in_channels = resolve_feature_dim(fv)
+    in_channels = resolve_feature_dim(fv, cfg.get("features_dim"))
 
     encoder_config, _, model_components = build_model_config(
         cfg, num_outputs=num_outputs, in_channels=in_channels, enc_act=cfg.model.enc_act

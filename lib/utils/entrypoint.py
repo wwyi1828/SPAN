@@ -1,4 +1,3 @@
-"""Shared helpers for Hydra task entrypoints."""
 from __future__ import annotations
 
 from typing import Callable, Iterable, Optional
@@ -13,7 +12,6 @@ def print_hydra_config(
     cfg: DictConfig,
     drop_keys: Optional[Iterable[str]] = None,
 ) -> None:
-    """Print a consistent Hydra configuration banner."""
     printable_cfg = cfg
     if drop_keys:
         cfg_dict = OmegaConf.to_container(cfg, resolve=False)
@@ -37,9 +35,6 @@ def initialize_hydra_run(
     mutate_cfg: Optional[Callable[[DictConfig], None]] = None,
     drop_keys: Optional[Iterable[str]] = None,
 ) -> DictConfig:
-    """
-    Apply optional config mutation, optional seeding, then print config.
-    """
     if mutate_cfg is not None:
         mutate_cfg(cfg)
     if seed is not None:

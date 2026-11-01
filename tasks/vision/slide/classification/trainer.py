@@ -34,7 +34,6 @@ def build_scheduler(optimizer, epochs: int):
 
 
 def should_update_best(current_auc: float, best_auc: float) -> bool:
-    """Determine if current macro AUC improves over the best."""
     if math.isnan(current_auc):
         return False
     if math.isnan(best_auc):

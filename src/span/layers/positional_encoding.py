@@ -8,20 +8,12 @@ import math
 # Utilities for 2D Rotary Position Embedding (RoPE)
 
 def rotate_half(x: torch.Tensor) -> torch.Tensor:
-    """Rotate last dimension in pairs: (x1, x2) -> (-x2, x1).
-
-    x: (..., D) where D must be even
-    """
     x = rearrange(x, '... (d r) -> ... d r', r=2)
     x1, x2 = x.unbind(dim=-1)
     x = torch.stack((-x2, x1), dim=-1)
     return rearrange(x, '... d r -> ... (d r)')
 
 def _build_inv_freq(dim: int, base: float, device=None, dtype=None) -> torch.Tensor:
-    """Return inverse frequencies of length dim//2 using base (theta).
-
-    Standard formula: inv_freq[i] = base^(-2i/dim)
-    """
     assert dim % 2 == 0, "Rotary dimension must be even"
     idx = torch.arange(0, dim, 2, device=device, dtype=torch.float32)
     inv_freq = 1.0 / (base ** (idx / dim))
@@ -34,12 +26,6 @@ def build_2d_rope_cos_sin(
     device=None,
     dtype=None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Compute per-position 2D rotary cos/sin for a head_dim.
-
-    - Split head_dim into two halves for H and W (each must be even).
-    - ins_pos: (N, 2) integer grid coords (h, w).
-    - Returns cos, sin with shape (N, 1, head_dim) for broadcasting to (N, H, D).
-    """
     assert head_dim % 4 == 0, "For 2D RoPE, head_dim must be divisible by 4"
     device = ins_pos.device if device is None else device
     dtype = dtype if dtype is not None else torch.get_default_dtype()
@@ -73,13 +59,6 @@ def apply_rotary_pos_emb(
     sin: torch.Tensor,
     scale: float = 1.0,
 ) -> torch.Tensor:
-    """Apply rotary with precomputed cos/sin.
-
-    Shapes:
-      - x:   (N, H, D)
-      - cos: (N, 1, D) broadcastable to x
-      - sin: (N, 1, D)
-    """
     return (x * cos * scale) + (rotate_half(x) * sin * scale)
 
 def apply_rope_2d_partial(
@@ -89,11 +68,6 @@ def apply_rope_2d_partial(
     base: float = 10000.0,
     scale: float = 1.0,
 ) -> torch.Tensor:
-    """Apply 2D RoPE to a prefix of the head dimension for robustness.
-
-    - x: (N, H, D)
-    - rotary_dim: if None, use the largest multiple of 4 <= D
-    """
     D = x.size(-1)
     if rotary_dim is None:
         rotary_dim = (D // 4) * 4
@@ -139,11 +113,6 @@ class RelativePositionBias(nn.Module):
         return adjustments
 
 class ALiBiPositionBias(nn.Module):
-    """ALiBi: Attention with Linear Biases for 2D positions.
-
-    Computes bias as: -slope * sqrt(dx^2 + dy^2)
-    Each head uses a different slope from a geometric sequence.
-    """
     def __init__(self, num_heads):
         super(ALiBiPositionBias, self).__init__()
         self.num_heads = num_heads
@@ -152,15 +121,6 @@ class ALiBiPositionBias(nn.Module):
         self.register_buffer('slopes', torch.tensor(slopes).view(num_heads, 1, 1))
 
     def forward(self, x_diff, y_diff):
-        """Compute ALiBi bias from position differences.
-
-        Args:
-            x_diff: (E,) x-coordinate differences
-            y_diff: (E,) y-coordinate differences
-
-        Returns:
-            bias: (E, num_heads, 1) attention bias
-        """
         # 2D Euclidean distance
         dist = torch.sqrt((x_diff.float() ** 2 + y_diff.float() ** 2))
         # dist: (E,) -> (E, 1, 1) for broadcasting

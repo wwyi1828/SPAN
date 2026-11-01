@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from timm.layers import DropPath
+from numbers import Integral
 from src.span.functional import create_activation
 
 
@@ -9,27 +10,7 @@ def _build_attention_activation(name):
     if name is None:
         return nn.Tanh()
 
-    if isinstance(name, str):
-        key = name.strip()
-        if hasattr(nn, key):
-            return getattr(nn, key)()
-        alias = {
-            "relu": "ReLU",
-            "gelu": "GELU",
-            "hardswish": "Hardswish",
-            "silu": "SiLU",
-            "swish": "SiLU",
-            "tanh": "Tanh",
-            "leakyrelu": "LeakyReLU",
-        }
-        mapped = alias.get(key.lower())
-        if mapped is not None and hasattr(nn, mapped):
-            return getattr(nn, mapped)()
-
-    try:
-        return create_activation(name)
-    except Exception:
-        return nn.Tanh()
+    return create_activation(name)
 
 class MLPAttention(nn.Module):
 
@@ -37,8 +18,9 @@ class MLPAttention(nn.Module):
 
         super().__init__()
         self.input_dim = input_dim
-        head_div = max(int(head_div), 1)
-        self.hidden_dim = max(input_dim // head_div, 1)
+        if isinstance(head_div, bool) or not isinstance(head_div, Integral) or not 1 <= head_div <= input_dim:
+            raise ValueError(f"head_div must be an integer between 1 and input_dim={input_dim}, got {head_div!r}")
+        self.hidden_dim = input_dim // head_div
         self.output_dim = 1
 
         self.feature = nn.Identity()
@@ -132,7 +114,7 @@ class MultiAttnAggregator(nn.Module):
         self.scale_logits = nn.Parameter(torch.zeros(num_layers))
         self.scale_router = nn.Linear(input_dim, 1, bias=False)
         nn.init.zeros_(self.scale_router.weight)
-        # Keep initial behavior close to previous version by weakly using context at start.
+        # Start with a small contribution from global context.
         self.context_alpha = nn.Parameter(torch.full((num_layers,), -2.0))
         self.context_router = nn.Linear(input_dim * 2, 1)
         nn.init.zeros_(self.context_router.weight)
@@ -188,7 +170,7 @@ class MultiAggregator(nn.Module):
         self.fc = nn.Sequential(nn.Dropout(dropout),
                                 nn.Linear(input_dim, num_classes))
         if weight:
-            self.weight = nn.Linear(num_layers*input_dim, 3)
+            self.weight = nn.Linear(num_layers*input_dim, num_layers)
         else:
             self.weight = None
 
@@ -198,7 +180,7 @@ class MultiAggregator(nn.Module):
         if not self.lastnorm:
             context_tensor = self.norm(context_tensor)
         if self.weight is not None:
-            weight = self.weight(context_tensor.view(1, -1)).view(-1, 1)
+            weight = self.weight(context_tensor.reshape(1, -1)).view(-1, 1)
             weights = F.softmax(weight/10, dim=0)
             context_tensor = (context_tensor * weights).sum(dim=0, keepdim=True)
         else:
